@@ -19,7 +19,8 @@ Turn the chamber light of a **Prusa CORE One** on and off from OctoPrint, and op
 | | |
 |---|---|
 | Printer | Prusa CORE One, tested with firmware 7.0.0. The CORE One L uses the same firmware code and should work, but is untested. |
-| OctoPrint | Tested on 1.11.8 |
+| OctoPrint | 1.10.0 or newer; tested on 1.11.8 and 2.0.0rc5 |
+| Python | 3.9 or newer |
 | Connection | USB (serial) |
 
 Other Prusa printers ignore the command (MK4, MINI) or behave differently (XL); they are not supported.

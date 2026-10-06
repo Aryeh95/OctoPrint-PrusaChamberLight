@@ -441,7 +441,7 @@ class ChamberLightPlugin(
 
 
 __plugin_name__ = "Prusa Chamber Light"
-__plugin_pythoncompat__ = ">=3.7,<4"
+__plugin_pythoncompat__ = ">=3.9,<4"
 __plugin_privacypolicy__ = "https://github.com/Aryeh95/OctoPrint-PrusaChamberLight/blob/main/PRIVACY.md"
 
 
