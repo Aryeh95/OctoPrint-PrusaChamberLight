@@ -9,20 +9,21 @@ $(function () {
         self.lightOn = ko.observable(true);
         self.brightness = ko.observable(100);
         self.brightnessDraft = ko.observable(100);
-        self.cookieSet = ko.observable(false);
-        self.firmwareUuid = ko.observable(null);
-        self.machineType = ko.observable(null);
         self.connectEnabled = ko.observable(false);
-        self.cookieDraft = ko.observable("");
+        self.loginSet = ko.observable(false);
+        self.autoRenew = ko.observable(false);
+        self.tokenExpires = ko.observable(null);
+        self.loginError = ko.observable(null);
+        self.machineType = ko.observable(null);
+        self.firmwareUuid = ko.observable(null);
+
+        self.tokenDraft = ko.observable("");
         self.busy = ko.observable(false);
         self.error = ko.observable("");
         self.syncResult = ko.observable("");
 
-        self.tokenExpires = ko.observable(null);
-        self.autoRenew = ko.observable(false);
-        self.loginError = ko.observable(null);
         self.tokenStatus = ko.pureComputed(function () {
-            if (!self.cookieSet()) return "not set";
+            if (!self.loginSet()) return "not set";
             var exp = self.tokenExpires();
             if (self.autoRenew()) {
                 return "renews automatically" + (exp ? " (current token valid until " + new Date(exp * 1000).toLocaleString() + ")" : "");
@@ -40,13 +41,14 @@ $(function () {
             self.lightOn(state.light_on);
             self.brightness(state.brightness);
             self.brightnessDraft(state.brightness);
-            self.cookieSet(state.cookie_set);
-            self.tokenExpires(state.token_expires);
-            self.autoRenew(state.auto_renew);
-            self.loginError(state.login_error);
-            self.firmwareUuid(state.firmware_uuid);
-            self.machineType(state.machine_type);
             self.connectEnabled(state.connect_enabled);
+            self.loginSet(state.login_set);
+            self.autoRenew(state.auto_renew);
+            self.tokenExpires(state.token_expires);
+            self.loginError(state.login_error);
+            self.machineType(state.machine_type);
+            // Identifiers are only included for users with the Settings permission.
+            if ("firmware_uuid" in state) self.firmwareUuid(state.firmware_uuid);
         };
 
         self.fetch = function () {
@@ -79,9 +81,9 @@ $(function () {
             });
         };
 
-        self.saveCookie = function () {
-            self.command("set_cookie", { cookie: self.cookieDraft() }).done(function () {
-                self.cookieDraft("");
+        self.storeToken = function () {
+            self.command("set_token", { token: self.tokenDraft() }).done(function () {
+                self.tokenDraft("");
             });
         };
 

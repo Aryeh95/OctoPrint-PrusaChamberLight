@@ -10,6 +10,29 @@
 
 <form class="form-horizontal" onsubmit="return false;">
     <div class="control-group">
+        <label class="control-label">Fade time</label>
+        <div class="controls">
+            <div class="input-append">
+                <input type="number" class="input-mini" min="0" max="10000" step="100" data-bind="value: settings.settings.plugins.chamberlight.fade_ms">
+                <span class="add-on">ms</span>
+            </div>
+            <span class="help-block">How long the light takes to fade in or out. 0 switches instantly.</span>
+        </div>
+    </div>
+    <div class="control-group">
+        <div class="controls">
+            <label class="checkbox">
+                <input type="checkbox" data-bind="checked: settings.settings.plugins.chamberlight.restore_on_connect">
+                Turn the light off again when OctoPrint reconnects, if it was off before
+            </label>
+            <span class="help-block">
+                The printer forgets the "off" state when it restarts. With this on, the plugin sends "off" again as soon as
+                OctoPrint connects to the printer.
+            </span>
+        </div>
+    </div>
+
+    <div class="control-group">
         <div class="controls">
             <label class="checkbox">
                 <input type="checkbox" data-bind="checked: settings.settings.plugins.chamberlight.connect_enabled">
@@ -18,7 +41,9 @@
             <span class="help-block">
                 The printer firmware has no G-code for chamber light brightness, so brightness is changed the same way the
                 Prusa app does it: through Prusa Connect. This needs internet access and your Prusa account login, and uses an
-                <b>unofficial</b> Connect API that Prusa may change or block at any time. Click Save after changing this.
+                <b>unofficial</b> Connect API that Prusa may change or block at any time. See the
+                <a href="https://github.com/Aryeh95/OctoPrint-PrusaChamberLight/blob/main/PRIVACY.md" target="_blank" rel="noopener">privacy notes</a>
+                for what gets sent where. Click Save after changing this.
             </span>
         </div>
     </div>
@@ -35,8 +60,8 @@
         <div class="control-group">
             <label class="control-label">Connect login</label>
             <div class="controls">
-                <input type="password" class="input-xlarge" autocomplete="off" data-bind="value: cookieDraft, valueUpdate: 'input'" placeholder="paste auth.refresh_token value">
-                <button class="btn" data-bind="click: saveCookie, enable: cookieDraft() && !busy()">Store</button>
+                <input type="password" class="input-xlarge" autocomplete="off" data-bind="value: tokenDraft, valueUpdate: 'input'" placeholder="paste auth.refresh_token value">
+                <button class="btn" data-bind="click: storeToken, enable: tokenDraft() && !busy()">Store</button>
                 <span class="help-block">
                     Status: <strong data-bind="text: tokenStatus"></strong>
                     <span class="text-error" data-bind="visible: loginError, text: loginError"></span>
@@ -57,7 +82,7 @@
         </div>
         <div class="control-group">
             <div class="controls">
-                <button class="btn" data-bind="click: sync, enable: cookieSet() && !busy()">Test connection</button>
+                <button class="btn" data-bind="click: sync, enable: loginSet() && !busy()">Test connection</button>
                 <span data-bind="text: syncResult"></span>
             </div>
         </div>

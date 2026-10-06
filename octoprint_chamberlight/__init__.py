@@ -41,10 +41,10 @@ from octoprint.events import Events
 from octoprint.util import RepeatedTimer
 
 MAX_DURATION_MS = 4294967295
+MAX_FADE_MS = 10000
 CONNECT_URL = "https://connect.prusa3d.com/app/printers/{uuid}"
 TOKEN_URL = "https://account.prusa3d.com/o/token/"
 CLIENT_ID = "MRHTlZhZqkNrrQ6FUPtjyusAz8nc59ErHXP8XkS4"  # Connect website's public client id
-AUTH_COOKIE = "auth.access_token"
 
 RENEW_CHECK_INTERVAL_S = 10 * 60
 RENEW_AHEAD_BACKGROUND_S = 30 * 60
@@ -78,34 +78,55 @@ class ChamberLightPlugin(
         self._login_error = None
         self._renew_timer = None
 
+    # -- settings --------------------------------------------------------------
+
     def get_settings_defaults(self):
         return {
-            "light_on": True,
+            # user settings
             "fade_ms": 500,
             "restore_on_connect": True,
-            "brightness": 100,
             "connect_enabled": False,
             "printer_uuid": "",
-            "connect_cookie": "",
+            # remembered state
+            "light_on": True,
+            "brightness": 100,
+            # credentials (never sent to the browser, see get_settings_restricted_paths)
+            "connect_access_token": "",
             "connect_refresh_token": "",
         }
 
     def get_settings_version(self):
-        return 1
+        return 2
 
     def on_settings_migrate(self, target, current):
-        # Pre-release installs had Connect always on: keep it on if a login is stored.
-        if current is None and (self._settings.get(["connect_cookie"]) or self._settings.get(["connect_refresh_token"])):
-            self._settings.set_boolean(["connect_enabled"], True)
+        if current is None:
+            # Pre-release installs had Connect always on: keep it on if a login is stored.
+            if self._settings.get(["connect_refresh_token"]) or self._settings.global_get(
+                ["plugins", "chamberlight", "connect_cookie"]
+            ):
+                self._settings.set_boolean(["connect_enabled"], True)
+        if current is None or current < 2:
+            # 0.4.0 called the access token "connect_cookie".
+            old = self._settings.global_get(["plugins", "chamberlight", "connect_cookie"])
+            if old:
+                self._settings.set(["connect_access_token"], old)
+                self._settings.global_remove(["plugins", "chamberlight", "connect_cookie"])
 
     def on_settings_save(self, data):
+        if "fade_ms" in data:
+            try:
+                data["fade_ms"] = max(0, min(MAX_FADE_MS, int(data["fade_ms"])))
+            except (TypeError, ValueError):
+                del data["fade_ms"]
         diff = octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
         self._notify()  # e.g. show/hide the brightness slider for everyone
         return diff
 
     def get_settings_restricted_paths(self):
         # Login credentials: never send them to the browser.
-        return {"never": [["connect_cookie"], ["connect_refresh_token"]]}
+        return {"never": [["connect_access_token"], ["connect_refresh_token"]]}
+
+    # -- UI --------------------------------------------------------------------
 
     def get_assets(self):
         return {"js": ["js/chamberlight.js"]}
@@ -114,14 +135,13 @@ class ChamberLightPlugin(
         return [
             {"type": "navbar", "custom_bindings": True},
             {"type": "sidebar", "name": "Chamber Light", "icon": "lightbulb", "custom_bindings": True},
-            {"type": "settings", "name": "Chamber Light", "custom_bindings": True},
+            {"type": "settings", "name": "Prusa Chamber Light", "custom_bindings": True},
         ]
 
     def is_template_autoescaped(self):
         return True
 
-    def is_api_protected(self):
-        return True
+    # -- lifecycle -------------------------------------------------------------
 
     def on_after_startup(self):
         # Renew in the background too, so the refresh token is used regularly
@@ -133,33 +153,51 @@ class ChamberLightPlugin(
         if self._renew_timer:
             self._renew_timer.cancel()
 
+    def on_event(self, event, payload):
+        # The override lives in printer RAM, so a printer power cycle turns the
+        # light back on. Re-apply "off" whenever OctoPrint reconnects.
+        if event == Events.CONNECTED and self._settings.get_boolean(["restore_on_connect"]):
+            if not self._settings.get_boolean(["light_on"]):
+                self._apply(False)
+
+    def on_firmware_info(self, comm, firmware_name, firmware_data, *args, **kwargs):
+        self._firmware_uuid = firmware_data.get("UUID") or None
+        self._machine_type = firmware_data.get("MACHINE_TYPE") or None
+        if self._machine_type and "COREONE" not in self._machine_type.upper():
+            self._logger.warning("Printer reports %s; this plugin is only tested on the Prusa CORE One", self._machine_type)
+
+    # -- API -------------------------------------------------------------------
+
+    def is_api_protected(self):
+        return True
+
     def get_api_commands(self):
         return {
             "on": [],
             "off": [],
             "toggle": [],
             "brightness": ["value"],
-            "set_cookie": ["cookie"],
+            "set_token": ["token"],
             "sync": [],
         }
 
     def on_api_get(self, request):
-        return flask.jsonify(self._state())
+        return flask.jsonify(self._state(include_ids=Permissions.SETTINGS.can()))
 
     def on_api_command(self, command, data):
-        if command == "set_cookie":
+        if command == "set_token":
             if not Permissions.SETTINGS.can():
                 flask.abort(403)
-            error = self._store_credential(str(data["cookie"]))
+            error = self._store_credential(str(data["token"]))
             if error:
                 return flask.make_response(error, 400)
-            return flask.jsonify(self._state())
+            return flask.jsonify(self._state(include_ids=True))
 
         if not Permissions.CONTROL.can():
             flask.abort(403)
 
         if command in ("brightness", "sync") and not self._settings.get_boolean(["connect_enabled"]):
-            return flask.make_response("Brightness control via Prusa Connect is turned off (Settings > Chamber Light)", 409)
+            return flask.make_response("Brightness control via Prusa Connect is turned off (Settings > Prusa Chamber Light)", 409)
 
         if command == "brightness":
             try:
@@ -194,34 +232,24 @@ class ChamberLightPlugin(
         self._notify()
         return flask.jsonify(self._state())
 
-    def on_event(self, event, payload):
-        # The override lives in printer RAM, so a printer power cycle turns the
-        # light back on. Re-apply "off" whenever OctoPrint reconnects.
-        if event == Events.CONNECTED and self._settings.get_boolean(["restore_on_connect"]):
-            if not self._settings.get_boolean(["light_on"]):
-                self._apply(False)
-
-    def on_firmware_info(self, comm, firmware_name, firmware_data, *args, **kwargs):
-        self._firmware_uuid = firmware_data.get("UUID") or None
-        self._machine_type = firmware_data.get("MACHINE_TYPE") or None
-        if self._machine_type and "COREONE" not in self._machine_type.upper():
-            self._logger.warning("Printer reports %s; this plugin is only tested on the Prusa CORE One", self._machine_type)
-
     # -- state -----------------------------------------------------------------
 
-    def _state(self):
-        return {
+    def _state(self, include_ids=False):
+        """Plugin state for the UI. Printer identifiers only go to users with the Settings permission."""
+        state = {
             "light_on": self._settings.get_boolean(["light_on"]),
             "brightness": self._settings.get_int(["brightness"]),
-            "cookie_set": bool(self._settings.get(["connect_cookie"]) or self._settings.get(["connect_refresh_token"])),
+            "connect_enabled": self._settings.get_boolean(["connect_enabled"]),
+            "login_set": bool(self._settings.get(["connect_access_token"]) or self._settings.get(["connect_refresh_token"])),
             "auto_renew": bool(self._settings.get(["connect_refresh_token"])),
             "token_expires": self._token_expiry(),
             "login_error": self._login_error,
-            "printer_uuid": self._printer_uuid(),
-            "firmware_uuid": self._firmware_uuid,
             "machine_type": self._machine_type,
-            "connect_enabled": self._settings.get_boolean(["connect_enabled"]),
         }
+        if include_ids:
+            state["printer_uuid"] = self._printer_uuid()
+            state["firmware_uuid"] = self._firmware_uuid
+        return state
 
     def _notify(self):
         self._plugin_manager.send_plugin_message(self._identifier, self._state())
@@ -238,9 +266,9 @@ class ChamberLightPlugin(
     # -- login -----------------------------------------------------------------
 
     def _store_credential(self, value):
-        """Accepts either an access token (JWT) or a refresh token."""
+        """Accepts either a refresh token (preferred, renews itself) or a bare access token."""
         value = value.strip().strip('"')
-        for prefix in (AUTH_COOKIE + "=", "auth.refresh_token=", "Bearer "):
+        for prefix in ("auth.access_token=", "auth.refresh_token=", "Bearer "):
             if value.startswith(prefix):
                 value = value[len(prefix) :]
         value = value.split(";")[0].strip()
@@ -251,7 +279,7 @@ class ChamberLightPlugin(
         claims = _jwt_claims(value)
         if claims and claims.get("type") != "refresh":
             # Access token only: works until it expires, no renewal.
-            self._settings.set(["connect_cookie"], value)
+            self._settings.set(["connect_access_token"], value)
             self._settings.set(["connect_refresh_token"], "")
             self._settings.save()
             self._login_error = None
@@ -268,7 +296,7 @@ class ChamberLightPlugin(
 
     def _token_expiry(self):
         """Expiry of the stored access token as a unix timestamp, or None if unreadable."""
-        exp = _jwt_claims(self._settings.get(["connect_cookie"]) or "").get("exp")
+        exp = _jwt_claims(self._settings.get(["connect_access_token"]) or "").get("exp")
         return int(exp) if isinstance(exp, (int, float)) else None
 
     def _ensure_fresh(self, min_valid_s, force=False):
@@ -276,7 +304,7 @@ class ChamberLightPlugin(
         if not self._settings.get(["connect_refresh_token"]):
             expiry = self._token_expiry()
             if expiry is not None and expiry < time.time():
-                return "The Prusa Connect token has expired. Paste a refresh token in Settings > Chamber Light so it renews itself"
+                return "The Prusa Connect token has expired. Paste a refresh token in Settings > Prusa Chamber Light so it renews itself"
             return None
         with self._token_lock:
             # Re-check under the lock: another thread may have just renewed.
@@ -301,7 +329,7 @@ class ChamberLightPlugin(
         if response.status_code in (400, 401):
             self._login_error = (
                 "Prusa login was rejected (the refresh token was already used, revoked or expired). "
-                "Paste a fresh auth.refresh_token in Settings > Chamber Light"
+                "Paste a fresh auth.refresh_token in Settings > Prusa Chamber Light"
             )
             self._logger.warning("Token renewal rejected: HTTP %d %s", response.status_code, response.text[:200])
             self._notify()
@@ -309,8 +337,13 @@ class ChamberLightPlugin(
         if not response.ok:
             return f"Prusa Account returned HTTP {response.status_code} while renewing the login"
 
-        data = response.json()
-        self._settings.set(["connect_cookie"], data["access_token"])
+        try:
+            data = response.json()
+            access_token = data["access_token"]
+        except (ValueError, KeyError, TypeError):
+            return "Prusa Account returned an unexpected reply while renewing the login"
+
+        self._settings.set(["connect_access_token"], access_token)
         if data.get("refresh_token"):
             self._settings.set(["connect_refresh_token"], data["refresh_token"])
         self._settings.save()
@@ -320,30 +353,33 @@ class ChamberLightPlugin(
         return None
 
     def _background_renew(self):
-        if self._settings.get_boolean(["connect_enabled"]) and self._settings.get(["connect_refresh_token"]):
-            self._ensure_fresh(RENEW_AHEAD_BACKGROUND_S)
+        # RepeatedTimer stops for good if the callback raises, so never let it.
+        try:
+            if self._settings.get_boolean(["connect_enabled"]) and self._settings.get(["connect_refresh_token"]):
+                self._ensure_fresh(RENEW_AHEAD_BACKGROUND_S)
+        except Exception:
+            self._logger.exception("Background login renewal failed")
 
     # -- Connect API -----------------------------------------------------------
 
     def _connect_request(self, method, path, **kwargs):
         """Returns (response, error message)."""
-        if not (self._settings.get(["connect_cookie"]) or self._settings.get(["connect_refresh_token"])):
-            return None, "No Prusa Connect login set (Settings > Chamber Light)"
+        if not (self._settings.get(["connect_access_token"]) or self._settings.get(["connect_refresh_token"])):
+            return None, "No Prusa Connect login set (Settings > Prusa Chamber Light)"
         uuid = self._printer_uuid()
         if not uuid:
-            return None, "Printer UUID unknown: connect the printer or set it in Settings > Chamber Light"
+            return None, "Printer UUID unknown: connect the printer or set it in Settings > Prusa Chamber Light"
 
         error = self._ensure_fresh(RENEW_AHEAD_REQUEST_S)
         if error:
             return None, error
 
         for attempt in range(2):
-            token = self._settings.get(["connect_cookie"])
+            token = self._settings.get(["connect_access_token"])
             try:
                 response = requests.request(
                     method,
                     CONNECT_URL.format(uuid=uuid) + path,
-                    cookies={AUTH_COOKIE: token},
                     headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
                     timeout=10,
                     **kwargs,
@@ -358,9 +394,9 @@ class ChamberLightPlugin(
                 return None, error
 
         if response.status_code in (401, 403):
-            return None, "Prusa Connect rejected the login. Paste a fresh auth.refresh_token in Settings > Chamber Light"
+            return None, "Prusa Connect rejected the login. Paste a fresh auth.refresh_token in Settings > Prusa Chamber Light"
         if response.status_code == 404 and not path:
-            return None, f"Prusa Connect does not know printer {uuid}. Check the printer UUID in Settings > Chamber Light"
+            return None, f"Prusa Connect does not know printer {uuid}. Check the printer UUID in Settings > Prusa Chamber Light"
         if response.status_code >= 300:
             return None, f"Prusa Connect returned HTTP {response.status_code} for {method} {path or '/'}: {response.text[:200]}"
         return response, None
@@ -380,18 +416,15 @@ class ChamberLightPlugin(
         if error:
             return error
         try:
-            data = response.json()
-        except ValueError:
-            return "Prusa Connect returned non-JSON data"
-        for holder in (data, data.get("telemetry") or {}, data.get("printer") or {}):
-            chamber = holder.get("chamber") if isinstance(holder, dict) else None
-            if isinstance(chamber, dict) and isinstance(chamber.get("led_intensity"), int):
-                self._settings.set_int(["brightness"], chamber["led_intensity"])
-                self._settings.save()
-                self._notify()
-                return None
-        self._logger.info("Connect printer data keys: %s", sorted(data.keys()))
-        return "Connected OK, but Connect's printer data has no chamber.led_intensity field"
+            brightness = int(response.json()["chamber"]["led_intensity"])
+        except (ValueError, KeyError, TypeError):
+            return "Connected OK, but Prusa Connect's printer data has no chamber.led_intensity field"
+        self._settings.set_int(["brightness"], brightness)
+        self._settings.save()
+        self._notify()
+        return None
+
+    # -- software update -------------------------------------------------------
 
     def get_update_information(self):
         return {
@@ -409,6 +442,7 @@ class ChamberLightPlugin(
 
 __plugin_name__ = "Prusa Chamber Light"
 __plugin_pythoncompat__ = ">=3.7,<4"
+__plugin_privacypolicy__ = "https://github.com/Aryeh95/OctoPrint-PrusaChamberLight/blob/main/PRIVACY.md"
 
 
 def __plugin_load__():

@@ -53,6 +53,18 @@ So the plugin sends:
 The override is only kept in the printer's memory and is lost when the printer restarts, which is why the plugin
 re-applies "off" when OctoPrint reconnects.
 
+## Settings
+
+All settings are in **Settings → Prusa Chamber Light**.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| Fade time | 500 ms | How long the light takes to fade in or out (the `T` parameter of `M151`). 0 switches instantly. |
+| Turn the light off again when OctoPrint reconnects | on | Re-sends "off" after a printer restart if the light was off before. |
+| Brightness control through Prusa Connect | off | Enables the brightness slider; see below. |
+| Printer UUID | empty | Only for Prusa Connect. Empty means the UUID the printer reports over USB. |
+| Connect login | empty | Only for Prusa Connect. A refresh token from your browser; see below. |
+
 ## Brightness (optional, experimental)
 
 The firmware has no G-code that changes the chamber light's brightness. It can only be changed on the touchscreen or
@@ -67,6 +79,7 @@ you move its brightness slider.
 - The login (a refresh token) is stored in plain text in OctoPrint's `config.yaml`. It is never sent to the browser,
   but anyone who can read that file can control your printers through Prusa Connect. Changing your Prusa account
   password or signing out everywhere revokes it.
+- [PRIVACY.md](PRIVACY.md) lists exactly what is sent to which Prusa service and when.
 
 **Setup**
 
