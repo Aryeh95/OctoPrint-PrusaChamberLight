@@ -1,0 +1,15 @@
+<div class="chamberlight-panel">
+    <button class="btn btn-block" data-bind="click: toggle, enable: printerState.isOperational() && canControl(), css: { 'btn-primary': lightOn() }">
+        <i class="fa-lightbulb" data-bind="css: { fas: lightOn(), far: !lightOn() }"></i>
+        <span data-bind="text: lightOn() ? 'Light on' : 'Light off'"></span>
+    </button>
+    <div data-bind="visible: connectEnabled">
+        <label style="margin-top: 10px">
+            Brightness: <strong data-bind="text: brightnessDraft() + '%'"></strong>
+        </label>
+        <input type="range" min="0" max="100" step="5" style="width: 100%"
+               data-bind="value: brightnessDraft, valueUpdate: 'input', event: { change: applyBrightness }, enable: canControl() && cookieSet() && !busy()">
+        <small class="muted" data-bind="visible: !cookieSet()">Set a Prusa Connect login in Settings &gt; Prusa Chamber Light to change brightness.</small>
+    </div>
+    <div class="text-error" data-bind="visible: error() || (connectEnabled() && loginError()), text: error() || loginError()"></div>
+</div>

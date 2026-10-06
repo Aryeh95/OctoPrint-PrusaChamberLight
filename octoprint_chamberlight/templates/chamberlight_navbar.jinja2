@@ -1,0 +1,7 @@
+<a href="javascript:void(0)"
+   data-bind="click: toggle,
+              visible: canControl,
+              css: { disabled: !printerState.isOperational() },
+              attr: { title: lightOn() ? 'Chamber light on (click to turn off)' : 'Chamber light off (click to turn on)' }">
+    <i class="fa-lightbulb" data-bind="css: { fas: lightOn(), far: !lightOn() }"></i>
+</a>

@@ -1,0 +1,65 @@
+<h3>Prusa Chamber Light</h3>
+
+<p>
+    The on/off button works over USB and needs nothing else.
+    <span data-bind="visible: machineType">Detected printer: <code data-bind="text: machineType"></code>.</span>
+    <span class="text-warning" data-bind="visible: machineType() && machineType().toUpperCase().indexOf('COREONE') < 0">
+        This plugin is only tested on the Prusa CORE One.
+    </span>
+</p>
+
+<form class="form-horizontal" onsubmit="return false;">
+    <div class="control-group">
+        <div class="controls">
+            <label class="checkbox">
+                <input type="checkbox" data-bind="checked: settings.settings.plugins.chamberlight.connect_enabled">
+                Brightness control through Prusa Connect (experimental)
+            </label>
+            <span class="help-block">
+                The printer firmware has no G-code for chamber light brightness, so brightness is changed the same way the
+                Prusa app does it: through Prusa Connect. This needs internet access and your Prusa account login, and uses an
+                <b>unofficial</b> Connect API that Prusa may change or block at any time. Click Save after changing this.
+            </span>
+        </div>
+    </div>
+
+    <div data-bind="visible: settings.settings.plugins.chamberlight.connect_enabled">
+        <div class="control-group">
+            <label class="control-label">Printer UUID</label>
+            <div class="controls">
+                <input type="text" class="input-xlarge" data-bind="value: settings.settings.plugins.chamberlight.printer_uuid, attr: { placeholder: firmwareUuid() || 'connect the printer to detect' }">
+                <span class="help-block">Leave empty to use the UUID the printer reports over USB<span data-bind="visible: firmwareUuid"> (<code data-bind="text: firmwareUuid"></code>)</span>.
+                If Connect says it does not know the printer, open your printer on connect.prusa3d.com and copy the UUID from the address bar, then click Save.</span>
+            </div>
+        </div>
+        <div class="control-group">
+            <label class="control-label">Connect login</label>
+            <div class="controls">
+                <input type="password" class="input-xlarge" autocomplete="off" data-bind="value: cookieDraft, valueUpdate: 'input'" placeholder="paste auth.refresh_token value">
+                <button class="btn" data-bind="click: saveCookie, enable: cookieDraft() && !busy()">Store</button>
+                <span class="help-block">
+                    Status: <strong data-bind="text: tokenStatus"></strong>
+                    <span class="text-error" data-bind="visible: loginError, text: loginError"></span>
+                </span>
+                <span class="help-block">
+                    To get it: log in at connect.prusa3d.com, open the browser's developer tools (F12) &gt; Application &gt;
+                    <b>Local storage</b> &gt; https://connect.prusa3d.com, and copy the value of <code>auth.refresh_token</code>.
+                    OctoPrint then renews its own login automatically. The token is stored in OctoPrint's config.yaml on this
+                    server and is never sent back to the browser. Anyone who can read that file can control your printers
+                    through Prusa Connect.
+                </span>
+                <span class="help-block">
+                    Each refresh token can be used only once, so after OctoPrint takes it over, the Connect website in that
+                    browser may log you out when it next renews (within about two hours). Log in there again; the website
+                    then has its own separate login.
+                </span>
+            </div>
+        </div>
+        <div class="control-group">
+            <div class="controls">
+                <button class="btn" data-bind="click: sync, enable: cookieSet() && !busy()">Test connection</button>
+                <span data-bind="text: syncResult"></span>
+            </div>
+        </div>
+    </div>
+</form>

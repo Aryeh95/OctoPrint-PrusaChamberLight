@@ -1,0 +1,4 @@
+include README.md
+include LICENSE
+recursive-include octoprint_chamberlight/templates *
+recursive-include octoprint_chamberlight/static *
