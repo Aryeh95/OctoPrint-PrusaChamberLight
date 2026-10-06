@@ -8,6 +8,10 @@ Turn the chamber light of a **Prusa CORE One** on and off from OctoPrint, and op
   See [Brightness](#brightness-optional-experimental) for why and for the caveats.
 - If the printer is power cycled while the light is off, the plugin turns it off again when OctoPrint reconnects.
 
+![Sidebar panel](extras/screenshots/sidebar.png)
+
+![Settings](extras/screenshots/settings.png)
+
 > Not affiliated with or endorsed by Prusa Research. "Prusa" and "CORE One" are trademarks of Prusa Research a.s.
 
 ## Compatibility

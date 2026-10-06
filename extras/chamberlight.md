@@ -24,16 +24,16 @@ tags:
 - enclosure
 - prusa connect
 
-# TODO: add screenshots, uploaded to the plugins.octoprint.org repository under /assets/img/plugins/chamberlight/
-# screenshots:
-# - url: /assets/img/plugins/chamberlight/sidebar.png
-#   alt: Chamber Light sidebar panel
-#   caption: On/off button and brightness slider in the sidebar
-# - url: /assets/img/plugins/chamberlight/settings.png
-#   alt: Chamber Light settings
-#   caption: Optional Prusa Connect setup for brightness control
-#
-# featuredimage: /assets/img/plugins/chamberlight/sidebar.png
+# Copies of extras/screenshots/*.png, uploaded to the plugins.octoprint.org repository
+screenshots:
+- url: /assets/img/plugins/chamberlight/sidebar.png
+  alt: Chamber Light sidebar panel
+  caption: On/off button and brightness slider in the sidebar
+- url: /assets/img/plugins/chamberlight/settings.png
+  alt: Chamber Light settings
+  caption: Optional Prusa Connect setup for brightness control
+
+featuredimage: /assets/img/plugins/chamberlight/sidebar.png
 
 compatibility:
   octoprint:
